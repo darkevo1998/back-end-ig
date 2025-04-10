@@ -2,19 +2,21 @@ const express = require('express');
 const passport = require('passport');
 const router = express.Router();
 
-// Redirect to Instagram OAuth
-router.get('/instagram', passport.authenticate('facebook', {
-  scope: ['instagram_basic', 'pages_show_list'],
-}));
+// Instagram authentication route
+router.get('/instagram', passport.authenticate('instagram'));
 
-// Handle callback
-router.get('/instagram/callback', 
-  passport.authenticate('facebook', { 
+router.get('/instagram/callback',
+  passport.authenticate('instagram', {
     failureRedirect: '/login',
-    session: true 
+    failureFlash: true
   }),
   (req, res) => {
-    res.redirect('https://front-end-ig.vercel.app/profile'); // Frontend success URL
+    if (!req.user) {
+      console.error("User authentication failed:", req.query);  // Log the failed auth details
+      return res.status(400).send('Authentication failed');
+    }
+    console.info(`Successful Instagram login for user: ${req.user.username}`);
+    res.redirect(process.env.CLIENT_SUCCESS_REDIRECT || '/profile');
   }
 );
 
