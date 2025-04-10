@@ -1,85 +1,34 @@
 const passport = require('passport');
-const InstagramStrategy = require('passport-instagram').Strategy;
-const User = require('../models/User');
+const FacebookStrategy = require('passport-facebook').Strategy;
 
-// Configure Instagram Strategy
-passport.use('instagram', new InstagramStrategy({
-    clientID: process.env.INSTAGRAM_CLIENT_ID,
-    clientSecret: process.env.INSTAGRAM_CLIENT_SECRET,
-    callbackURL: process.env.INSTAGRAM_CALLBACK_URL,
-    passReqToCallback: true
-  },
-  async (req, accessToken, refreshToken, profile, done) => {
-    try {
-      // Your user handling logic here
-      let user = await User.findOne({ instagramId: profile.id });
-      
-      if (!user) {
-        user = new User({
-          instagramId: profile.id,
-          username: profile.username,
-          accessToken: accessToken
-        });
-        await user.save();
-      }
-      
-      return done(null, user);
-    } catch (err) {
-      return done(err);
+// Configure Facebook (Instagram Graph API) Strategy
+passport.use(
+  new FacebookStrategy(
+    {
+      clientID: process.env.INSTAGRAM_APP_ID, // From Facebook Developer App
+      clientSecret: process.env.INSTAGRAM_APP_SECRET,
+      callbackURL: "https://back-end-ig.vercel.app/auth/instagram/callback",
+      profileFields: ['id', 'displayName', 'photos', 'email'],
+      enableProof: true, // Security measure
+      scope: ['instagram_basic', 'pages_show_list'], // Instagram Business permissions
+    },
+    (accessToken, refreshToken, profile, done) => {
+      // This function runs after successful OAuth
+      // Save user to DB or attach to session
+      console.log('Instagram OAuth profile:', profile);
+      return done(null, profile); // Attaches `profile` to `req.user`
     }
-  }
-));
+  )
+);
 
-// Serialization/Deserialization
-passport.serializeUser((user, done) => done(null, user.id));
-passport.deserializeUser(async (id, done) => {
-  try {
-    const user = await User.findById(id);
-    done(null, user);
-  } catch (err) {
-    done(err);
-  }
+// Optional: Serialize/Deserialize User (if using sessions)
+passport.serializeUser((user, done) => {
+  done(null, user.id); // Saves user ID to session
 });
 
-module.exports = function(passport) {
-  const InstagramStrategy = require('passport-instagram').Strategy;
-  const User = require('../models/User');
+passport.deserializeUser((id, done) => {
+  // Fetch user from DB by ID (if needed)
+  done(null, { id }); // Mock example
+});
 
-  passport.use(new InstagramStrategy({
-    clientID: process.env.INSTAGRAM_CLIENT_ID,
-    clientSecret: process.env.INSTAGRAM_CLIENT_SECRET,
-    callbackURL: process.env.INSTAGRAM_CALLBACK_URL,
-    passReqToCallback: true
-  },
-  async (req, accessToken, refreshToken, profile, done) => {
-    try {
-      let user = await User.findOne({ instagramId: profile.id });
-      
-      if (!user) {
-        user = new User({
-          instagramId: profile.id,
-          username: profile.username,
-          accessToken: accessToken
-        });
-        await user.save();
-      }
-      
-      return done(null, user);
-    } catch (err) {
-      return done(err);
-    }
-  }));
-
-  passport.serializeUser((user, done) => {
-    done(null, user.id);
-  });
-
-  passport.deserializeUser(async (id, done) => {
-    try {
-      const user = await User.findById(id);
-      done(null, user);
-    } catch (err) {
-      done(err);
-    }
-  });
-};
+module.exports = passport;
