@@ -1,18 +1,35 @@
-const InstagramStrategy = require('passport-oauth2').Strategy;
+const axios = require('axios');
+const InstagramStrategy = require('passport-instagram').Strategy;
+const User = require('../models/User');
 
-passport.use(new InstagramStrategy({
-    authorizationURL: 'https://api.instagram.com/oauth/authorize',
-    tokenURL: 'https://api.instagram.com/oauth/access_token',
+module.exports = function(passport) {
+  // Function to get user ID from access token (updated for Instagram Graph API)
+  const getInstagramUserId = async (accessToken) => {
+    try {
+      const response = await axios.get(
+        `https://graph.instagram.com/me?fields=id&access_token=${accessToken}`
+      );
+      return response.data.id;
+    } catch (error) {
+      console.error('Error getting user ID:', error.response?.data || error.message);
+      throw new Error('Failed to fetch user ID from Instagram');
+    }
+  };
+
+  passport.use(new InstagramStrategy({
     clientID: process.env.INSTAGRAM_CLIENT_ID,
     clientSecret: process.env.INSTAGRAM_CLIENT_SECRET,
     callbackURL: process.env.INSTAGRAM_CALLBACK_URL,
-    scope: ['user_profile', 'user_media'],
-    state: true,
-    passReqToCallback: true
+    proxy: true, // Important for production
+    scope: ['user_profile', 'user_media'], // Required permissions
+    state: true // CSRF protection
   },
-  async (req, accessToken, refreshToken, profile, done) => {
+  async (accessToken, refreshToken, profile, done) => {
     try {
-      const userId = await getInstagramUserId(accessToken); // Same as before
+      // Get numeric user ID using Graph API
+      const userId = await getInstagramUserId(accessToken);
+      
+      // Find or create user
       let user = await User.findOneAndUpdate(
         { instagramId: userId },
         { 
@@ -22,10 +39,25 @@ passport.use(new InstagramStrategy({
         },
         { upsert: true, new: true }
       );
+
       return done(null, user);
     } catch (err) {
-      console.error('Auth error:', err);
+      console.error('Authentication error:', err);
       return done(err);
     }
-  }
-));
+  }));
+
+  // Serialization/deserialization
+  passport.serializeUser((user, done) => {
+    done(null, user.id);
+  });
+
+  passport.deserializeUser(async (id, done) => {
+    try {
+      const user = await User.findById(id);
+      done(null, user);
+    } catch (err) {
+      done(err);
+    }
+  });
+};
