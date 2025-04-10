@@ -2,6 +2,26 @@ const express = require('express');
 const passport = require('passport');
 const router = express.Router();
 
+// Webhook verification for Instagram
+router.get('/webhooks', (req, res) => {
+  const VERIFY_TOKEN = 'testing'; // Replace with your actual verify token
+
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  if (mode && token === VERIFY_TOKEN) {
+    if (mode === 'subscribe') {
+      console.log('Webhook verified successfully!');
+      return res.status(200).send(challenge);
+    }
+  }
+
+  // If verification fails
+  console.warn('Webhook verification failed');
+  res.sendStatus(403);
+});
+
 // Instagram authentication route
 router.get('/instagram', passport.authenticate('instagram'));
 
