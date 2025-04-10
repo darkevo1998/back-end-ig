@@ -5,6 +5,7 @@ const router = express.Router();
 // Instagram authentication route
 router.get('/instagram', passport.authenticate('instagram'));
 
+// Instagram callback route (after OAuth)
 router.get('/instagram/callback',
   passport.authenticate('instagram', {
     failureRedirect: '/login',
@@ -12,7 +13,7 @@ router.get('/instagram/callback',
   }),
   (req, res) => {
     if (!req.user) {
-      console.error("User authentication failed:", req.query);  // Log the failed auth details
+      console.error("User authentication failed:", req.query);
       return res.status(400).send('Authentication failed');
     }
     console.info(`Successful Instagram login for user: ${req.user.username}`);
@@ -20,6 +21,26 @@ router.get('/instagram/callback',
   }
 );
 
+// Facebook/Instagram Webhook Verification
+// (Required for webhooks, not OAuth)
+router.get('/instagram/webhook', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  // Check if mode and token are present
+  if (mode && token) {
+    // Verify the token matches your expected token
+    if (mode === 'subscribe' && token === process.env.FB_VERIFY_TOKEN) {
+      console.log('Webhook verified successfully');
+      return res.status(200).send(challenge);
+    } else {
+      console.error('Verification failed - Invalid token or mode');
+      return res.sendStatus(403);
+    }
+  }
+  return res.sendStatus(400);
+});
 
 // Logout route
 router.get('/logout', (req, res) => {
