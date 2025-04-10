@@ -1,7 +1,6 @@
 const axios = require('axios');
 const InstagramStrategy = require('passport-instagram').Strategy;
 const User = require('../models/User');
-const logger = require('../utils/logger');
 
 /**
  * Get Instagram user ID using Graph API
@@ -24,7 +23,7 @@ const getInstagramUserId = async (accessToken) => {
 
     return response.data.id;
   } catch (error) {
-    logger.error('Error getting Instagram user ID:', {
+    console.error('Error getting Instagram user ID:', {
       error: error.response?.data || error.message,
       stack: error.stack
     });
@@ -48,7 +47,7 @@ const getInstagramProfile = async (accessToken) => {
     );
     return response.data;
   } catch (error) {
-    logger.error('Error getting Instagram profile:', error);
+    console.error('Error getting Instagram profile:', error);
     return null;
   }
 };
@@ -104,11 +103,11 @@ module.exports = function(passport) {
           );
 
           // Log successful authentication
-          logger.info(`User authenticated: ${user.username} (${user.instagramId})`);
+          console.info(`User authenticated: ${user.username} (${user.instagramId})`);
 
           return done(null, user);
         } catch (err) {
-          logger.error('Instagram authentication error:', {
+          console.error('Instagram authentication error:', {
             error: err.message,
             stack: err.stack,
             profile: profile

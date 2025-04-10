@@ -1,7 +1,6 @@
 const express = require('express');
 const passport = require('passport');
 const router = express.Router();
-const logger = require('../utils/logger');
 
 // Instagram authentication route
 router.get('/instagram', passport.authenticate('instagram'));
@@ -13,7 +12,8 @@ router.get('/instagram/callback',
     failureFlash: true
   }),
   (req, res) => {
-    logger.info(`Successful Instagram login for user: ${req.user.username}`);
+    // Log successful login (simple console.log)
+    console.info(`Successful Instagram login for user: ${req.user.username}`);
     res.redirect(process.env.CLIENT_SUCCESS_REDIRECT || '/profile');
   }
 );
@@ -22,7 +22,7 @@ router.get('/instagram/callback',
 router.get('/logout', (req, res) => {
   req.logout(err => {
     if (err) {
-      logger.error('Logout error:', err);
+      console.error('Logout error:', err);
       return res.status(500).send('Error during logout');
     }
     res.redirect('/');
