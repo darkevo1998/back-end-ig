@@ -1,60 +1,140 @@
 const axios = require('axios');
 const InstagramStrategy = require('passport-instagram').Strategy;
 const User = require('../models/User');
+const logger = require('../utils/logger');
 
+/**
+ * Get Instagram user ID using Graph API
+ * @param {string} accessToken - Instagram access token
+ * @returns {Promise<string>} - Instagram user ID
+ */
+const getInstagramUserId = async (accessToken) => {
+  try {
+    const response = await axios.get(
+      `https://graph.instagram.com/me?fields=id,username,account_type,media_count`,
+      {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+        timeout: 5000
+      }
+    );
+
+    if (!response.data.id) {
+      throw new Error('No user ID returned from Instagram API');
+    }
+
+    return response.data.id;
+  } catch (error) {
+    logger.error('Error getting Instagram user ID:', {
+      error: error.response?.data || error.message,
+      stack: error.stack
+    });
+    throw new Error('Failed to fetch user data from Instagram');
+  }
+};
+
+/**
+ * Get additional Instagram user profile data
+ * @param {string} accessToken - Instagram access token
+ * @returns {Promise<Object>} - User profile data
+ */
+const getInstagramProfile = async (accessToken) => {
+  try {
+    const response = await axios.get(
+      `https://graph.instagram.com/me?fields=id,username,account_type,media_count`,
+      {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+        timeout: 5000
+      }
+    );
+    return response.data;
+  } catch (error) {
+    logger.error('Error getting Instagram profile:', error);
+    return null;
+  }
+};
+
+/**
+ * Configure Instagram authentication strategy
+ * @param {Passport} passport - Passport instance
+ */
 module.exports = function(passport) {
-  // Function to get user ID from access token (updated for Instagram Graph API)
-  const getInstagramUserId = async (accessToken) => {
-    try {
-      const response = await axios.get(
-        `https://graph.instagram.com/me?fields=id&access_token=${accessToken}`
-      );
-      return response.data.id;
-    } catch (error) {
-      console.error('Error getting user ID:', error.response?.data || error.message);
-      throw new Error('Failed to fetch user ID from Instagram');
-    }
-  };
+  passport.use(
+    new InstagramStrategy(
+      {
+        clientID: process.env.INSTAGRAM_CLIENT_ID,
+        clientSecret: process.env.INSTAGRAM_CLIENT_SECRET,
+        callbackURL: process.env.INSTAGRAM_CALLBACK_URL,
+        proxy: true,
+        passReqToCallback: true,
+        scope: ['user_profile', 'user_media'],
+        state: true,
+        enableProof: true
+      },
+      async (req, accessToken, refreshToken, profile, done) => {
+        try {
+          // Verify the access token is valid
+          const userId = await getInstagramUserId(accessToken);
+          const instagramProfile = await getInstagramProfile(accessToken);
 
-  passport.use(new InstagramStrategy({
-    clientID: process.env.INSTAGRAM_CLIENT_ID,
-    clientSecret: process.env.INSTAGRAM_CLIENT_SECRET,
-    callbackURL: process.env.INSTAGRAM_CALLBACK_URL,
-    proxy: true, // Important for production
-    scope: ['user_profile', 'user_media'], // Required permissions
-    state: true // CSRF protection
-  },
-  async (accessToken, refreshToken, profile, done) => {
-    try {
-      // Get numeric user ID using Graph API
-      const userId = await getInstagramUserId(accessToken);
-      
-      // Find or create user
-      let user = await User.findOneAndUpdate(
-        { instagramId: userId },
-        { 
-          username: profile.username,
-          accessToken: accessToken,
-          lastLogin: new Date()
-        },
-        { upsert: true, new: true }
-      );
+          if (!userId) {
+            throw new Error('Instagram authentication failed - no user ID');
+          }
 
-      return done(null, user);
-    } catch (err) {
-      console.error('Authentication error:', err);
-      return done(err);
-    }
-  }));
+          // Prepare user data
+          const userData = {
+            instagramId: userId,
+            username: profile.username || instagramProfile?.username,
+            displayName: profile.displayName || profile.username,
+            accessToken: accessToken,
+            refreshToken: refreshToken || null,
+            profileData: instagramProfile || {},
+            lastLogin: new Date()
+          };
 
-  // Serialization/deserialization
+          // Find or create user
+          let user = await User.findOneAndUpdate(
+            { instagramId: userId },
+            userData,
+            {
+              upsert: true,
+              new: true,
+              setDefaultsOnInsert: true,
+              runValidators: true
+            }
+          );
+
+          // Log successful authentication
+          logger.info(`User authenticated: ${user.username} (${user.instagramId})`);
+
+          return done(null, user);
+        } catch (err) {
+          logger.error('Instagram authentication error:', {
+            error: err.message,
+            stack: err.stack,
+            profile: profile
+          });
+          return done(err);
+        }
+      }
+    )
+  );
+
+  // Serialize user for session
   passport.serializeUser((user, done) => {
-    done(null, user.id);
+    done(null, {
+      id: user.id,
+      instagramId: user.instagramId,
+      username: user.username
+    });
   });
 
-  passport.deserializeUser(async (id, done) => {
+  // Deserialize user from session
+  passport.deserializeUser(async (serializedUser, done) => {
     try {
-      const user = await User.findById(id);
+      const user = await User.findById(serializedUser.id);
+      if (!user) {
+        return done(new Error('User not found'));
+      }
       done(null, user);
     } catch (err) {
       done(err);
