@@ -5,18 +5,21 @@ const router = express.Router();
 // Instagram authentication route
 router.get('/instagram', passport.authenticate('instagram'));
 
-// Instagram callback route
 router.get('/instagram/callback',
   passport.authenticate('instagram', {
     failureRedirect: '/login',
     failureFlash: true
   }),
   (req, res) => {
-    // Log successful login (simple console.log)
+    if (!req.user) {
+      console.error("User authentication failed:", req.query);  // Log the failed auth details
+      return res.status(400).send('Authentication failed');
+    }
     console.info(`Successful Instagram login for user: ${req.user.username}`);
     res.redirect(process.env.CLIENT_SUCCESS_REDIRECT || '/profile');
   }
 );
+
 
 // Logout route
 router.get('/logout', (req, res) => {
