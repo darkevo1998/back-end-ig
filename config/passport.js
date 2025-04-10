@@ -5,8 +5,8 @@ const FacebookStrategy = require('passport-facebook').Strategy;
 passport.use(
   new FacebookStrategy(
     {
-      clientID: process.env.INSTAGRAM_APP_ID, // From Facebook Developer App
-      clientSecret: process.env.INSTAGRAM_APP_SECRET,
+      clientID: process.env.INSTAGRAM_CLIENT_ID, // From Facebook Developer App
+      clientSecret: process.env.INSTAGRAM_CLIENT_SECRET,
       callbackURL: "https://back-end-ig.vercel.app/auth/instagram/callback",
       profileFields: ['id', 'displayName', 'photos', 'email'],
       enableProof: true, // Security measure
