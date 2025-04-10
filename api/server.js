@@ -4,8 +4,8 @@ const mongoose = require('mongoose');
 const passport = require('passport');
 const cors = require('cors');
 const session = require('express-session');
-const authRoutes = require('./routes/authRoutes');
-const instagramRoutes = require('./routes/instagramRoutes');
+const authRoutes = require('../routes/authRoutes');
+const instagramRoutes = require('../routes/instagramRoutes');
 
 const app = express();
 
@@ -22,7 +22,7 @@ app.use(session({
   cookie: { secure: process.env.NODE_ENV === 'production' }
 }));
 
-require('./config/passport')(passport);
+require('../config/passport')(passport);
 
 app.use(passport.initialize());
 app.use(passport.session());
