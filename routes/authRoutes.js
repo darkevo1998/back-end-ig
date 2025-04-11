@@ -1,68 +1,95 @@
 const express = require('express');
-const passport = require('passport');
 const router = express.Router();
+const crypto = require('crypto')
 
-// Instagram authentication route
-router.get('/instagram', passport.authenticate('instagram'));
+// Step 1: Redirect to Facebook's OAuth (for Instagram)
+router.get('/instagram', (req, res) => {
+  const params = new URLSearchParams({
+    client_id: process.env.FACEBOOK_APP_ID, // Use Facebook App ID!
+    redirect_uri: process.env.INSTAGRAM_REDIRECT_URI,
+    scope: 'instagram_basic,instagram_content_publish', // Business scopes
+    response_type: 'code',
+    state: crypto.randomBytes(16).toString('hex')
+  });
 
-// Instagram callback route (after OAuth)
-router.get('/instagram/callback',
-  passport.authenticate('instagram', {
-    failureRedirect: '/login',
-    failureFlash: true
-  }),
-  (req, res) => {
-    if (!req.user) {
-      console.error("User authentication failed:", req.query);
-      return res.status(400).send('Authentication failed');
-    }
-    console.info(`Successful Instagram login for user: ${req.user.username}`);
-    res.redirect(process.env.CLIENT_SUCCESS_REDIRECT || '/profile');
+  res.redirect(`https://www.facebook.com/v18.0/dialog/oauth?${params}`);
+});
+
+// Step 2: Handle callback
+router.get('/instagram/callback', async (req, res) => {
+  try {
+    // 1. Exchange code for token
+    const { data } = await axios.get(`https://graph.facebook.com/v18.0/oauth/access_token`, {
+      params: {
+        client_id: process.env.FACEBOOK_APP_ID,
+        client_secret: process.env.FACEBOOK_APP_SECRET,
+        redirect_uri: process.env.INSTAGRAM_REDIRECT_URI,
+        code: req.query.code
+      }
+    });
+
+    // 2. Get Instagram Business Account ID
+    const account = await axios.get(`https://graph.facebook.com/v18.0/me/accounts`, {
+      params: {
+        access_token: data.access_token,
+        fields: 'instagram_business_account'
+      }
+    });
+
+    // 3. Store tokens
+    req.session.igToken = data.access_token;
+    req.session.igBusinessId = account.data.data[0].instagram_business_account.id;
+    
+    res.redirect('/profile');
+  } catch (error) {
+    console.error('Instagram Auth Error:', error.response?.data || error.message);
+    res.redirect('/login?error=instagram_auth_failed');
   }
-);
+});
 
-// Facebook/Instagram Webhook Verification
-// (Required for webhooks, not OAuth)
+// 4. Webhook Verification
 router.get('/instagram/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
-  // Check if mode and token are present
   if (mode && token) {
-    // Verify the token matches your expected token
-    if (mode === 'subscribe' && token === process.env.FB_VERIFY_TOKEN) {
-      console.log('Webhook verified successfully');
+    if (mode === 'subscribe' && token === process.env.INSTAGRAM_VERIFY_TOKEN) {
+      console.log('Instagram webhook verified');
       return res.status(200).send(challenge);
-    } else {
-      console.error('Verification failed - Invalid token or mode');
-      return res.sendStatus(403);
     }
+    return res.sendStatus(403);
   }
   return res.sendStatus(400);
 });
 
-// Logout route
-router.get('/logout', (req, res) => {
-  req.logout(err => {
-    if (err) {
-      console.error('Logout error:', err);
-      return res.status(500).send('Error during logout');
-    }
-    res.redirect('/');
-  });
-});
-
-// Current user route
-router.get('/current_user', (req, res) => {
+// 5. Current User Endpoint (with fresh media data)
+router.get('/current_user', async (req, res) => {
   if (!req.user) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
-  res.json({
-    id: req.user.id,
-    username: req.user.username,
-    profile: req.user.profileData
-  });
+
+  try {
+    const mediaResponse = await InstagramAPI.get(`/${req.user.instagramId}/media`, {
+      params: {
+        access_token: req.user.accessToken,
+        fields: 'id,media_type,media_url'
+      }
+    });
+
+    res.json({
+      id: req.user.instagramId,
+      username: req.user.username,
+      accountType: req.user.accountType,
+      recentMedia: mediaResponse.data.data
+    });
+  } catch (error) {
+    res.json({
+      id: req.user.instagramId,
+      username: req.user.username,
+      error: "Could not fetch media data"
+    });
+  }
 });
 
 module.exports = router;

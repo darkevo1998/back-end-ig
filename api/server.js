@@ -1,7 +1,6 @@
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
-const passport = require('passport');
 const cors = require('cors');
 const session = require('express-session');
 const authRoutes = require('../routes/authRoutes');
@@ -21,11 +20,6 @@ app.use(session({
   saveUninitialized: false,
   cookie: { secure: process.env.NODE_ENV === 'production' }
 }));
-
-require('../config/passport'); 
-
-app.use(passport.initialize());
-app.use(passport.session());
 
 // Database connection
 mongoose.connect(process.env.MONGODB_URI)
