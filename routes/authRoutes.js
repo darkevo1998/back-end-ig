@@ -3,64 +3,56 @@ const router = express.Router();
 const crypto = require('crypto')
 
 // Step 1: Redirect to Facebook's OAuth (for Instagram)
-router.get('/instagram', (req, res) => {
+router.get('/login', (req, res) => {
   const params = new URLSearchParams({
-    client_id: process.env.FACEBOOK_APP_ID, // Use Facebook App ID!
-    redirect_uri: process.env.INSTAGRAM_REDIRECT_URI,
-    scope: 'instagram_basic,instagram_content_publish', // Business scopes
-    response_type: 'code',
-    state: crypto.randomBytes(16).toString('hex')
+      client_id: process.env.INSTAGRAM_CLIENT_ID , // Use your Instagram/Facebook App ID
+      redirect_uri: process.env.INSTAGRAM_CALLBACK_URL, // Use your Instagram/Facebook Callback URL
+      client_secret: process.env.INSTAGRAM_CLIENT_SECRET, // Use your Instagram/Facebook App Secret
+      response_type: 'code',
+      scope: [
+          'instagram_basic', 
+          'instagram_content_publish', 
+          'instagram_manage_messages',
+          'instagram_manage_comments'
+      ].join(','),
+      state: crypto.randomBytes(16).toString('hex') // CSRF protection
   });
 
-  res.redirect(`https://www.facebook.com/v18.0/dialog/oauth?${params}`);
+  res.redirect(`https://www.instagram.com/oauth/authorize?${params}`);
 });
 
-// Step 2: Handle callback
-router.get('/instagram/callback', async (req, res) => {
+// Instagram Token Exchange Endpoint
+router.get("/your_insta_token", async (req, res) => {
   try {
-    // 1. Exchange code for token
-    const { data } = await axios.get(`https://graph.facebook.com/v18.0/oauth/access_token`, {
-      params: {
-        client_id: process.env.FACEBOOK_APP_ID,
-        client_secret: process.env.FACEBOOK_APP_SECRET,
-        redirect_uri: process.env.INSTAGRAM_REDIRECT_URI,
-        code: req.query.code
-      }
-    });
+      // Get code from query params
+      const authorization_code = req.query.code + "#_";
+      
+      // Exchange code for access token
+      const url = "https://api.instagram.com/oauth/access_token";
+      const payload = new URLSearchParams({
+          client_id: process.env.INSTAGRAM_CLIENT_ID,
+          client_secret: process.env.INSTAGRAM_CLIENT_SECRET,
+          grant_type: "authorization_code",
+          redirect_uri: process.env.INSTAGRAM_CALLBACK_URL,
+          code: authorization_code
+      });
 
-    // 2. Get Instagram Business Account ID
-    const account = await axios.get(`https://graph.facebook.com/v18.0/me/accounts`, {
-      params: {
-        access_token: data.access_token,
-        fields: 'instagram_business_account'
-      }
-    });
+      const response = await axios.post(url, payload.toString(), {
+          headers: {
+              'Content-Type': 'application/x-www-form-urlencoded'
+          }
+      });
 
-    // 3. Store tokens
-    req.session.igToken = data.access_token;
-    req.session.igBusinessId = account.data.data[0].instagram_business_account.id;
-    
-    res.redirect('/profile');
+      const data = response.data;
+      const user_access_token = data.access_token;
+      
+      // Return the token (customize this response as needed)
+      res.send(`repository_user token is: ${user_access_token} and library_type`);
+      
   } catch (error) {
-    console.error('Instagram Auth Error:', error.response?.data || error.message);
-    res.redirect('/login?error=instagram_auth_failed');
+      console.error("Error exchanging token:", error.response?.data || error.message);
+      res.status(500).send("Error during token exchange");
   }
-});
-
-// 4. Webhook Verification
-router.get('/instagram/webhook', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
-
-  if (mode && token) {
-    if (mode === 'subscribe' && token === process.env.INSTAGRAM_VERIFY_TOKEN) {
-      console.log('Instagram webhook verified');
-      return res.status(200).send(challenge);
-    }
-    return res.sendStatus(403);
-  }
-  return res.sendStatus(400);
 });
 
 // 5. Current User Endpoint (with fresh media data)
